@@ -173,17 +173,23 @@ class Network:
         *,
         options: SolveOptions | None = None,
         relax_infeasible: bool = False,
+        diagnose_infeasibility: bool = True,
     ) -> None:
         """Create a network with the given period durations and solver options.
 
         With ``relax_infeasible``, a model whose constraints cannot all hold is
         solved with the fewest of them relaxed, instead of raising.
+        Set ``diagnose_infeasibility=False`` to skip the potentially expensive
+        irreducible infeasible subsystem (IIS) search when a model is infeasible.
+        This is useful for screening many candidate LPs; the default preserves
+        detailed conflict reporting.
         """
         self.name = name
         self.periods = np.asarray(periods, dtype=float)
         self.elements: dict[str, Element[Any]] = {}
         self.options = options or SolveOptions()
         self.relax_infeasible = relax_infeasible
+        self.diagnose_infeasibility = diagnose_infeasibility
         # Rows that could not all hold in the last solve, empty unless it was infeasible
         self.conflicts: tuple[RowLabel, ...] = ()
         # Rows the last plan moved past their bounds, empty unless it was relaxed
@@ -339,6 +345,10 @@ class Network:
         try:
             return self._solve(all_col_indices, objectives)
         except InfeasibleError:
+            if not self.diagnose_infeasibility and not self.relax_infeasible:
+                # Candidate screening does not need the expensive HiGHS IIS.
+                # Preserve the default diagnostic behavior for other callers.
+                raise InfeasibleError() from None
             balance_rows = {
                 row
                 for element in self.elements.values()
@@ -346,7 +356,8 @@ class Network:
                 for row in rows.tolist()
             }
             labels = row_labels(self.constraints(), self.n_periods, balance_rows)
-            self.conflicts = conflicting_rows(h, labels)
+            if self.diagnose_infeasibility:
+                self.conflicts = conflicting_rows(h, labels)
             if not self.relax_infeasible:
                 raise InfeasibleError(self.conflicts) from None
 
