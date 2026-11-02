@@ -19,7 +19,9 @@ def make_network(*, grid_price=0.0, backup_price=None, demand_periods=None, unit
     network.add({
         "element_type": "connection", "name": "site_import",
         "source": "grid", "target": target, "tags": {0},
-        "segments": {"price": {"segment_type": "pricing", "price": grid_price}},
+        "segments": {"price": {"segment_type": "pricing", "price": grid_price},
+                     **({} if backup_price is not None else {
+                         "fixed": {"segment_type": "power_limit", "max_power": 100.0, "fixed": True}})},
     })
     if backup_price is not None:
         network.add({
@@ -32,10 +34,6 @@ def make_network(*, grid_price=0.0, backup_price=None, demand_periods=None, unit
             "source": "junction", "target": "load", "tags": {0},
             "segments": {"fixed": {"segment_type": "power_limit", "max_power": 100.0, "fixed": True}},
         })
-    else:
-        # Force 100 kW in every interval directly on site_import.
-        network.elements["site_import"].segments  # ensure connection exists
-        # A fixed load is added via the connection's segment configuration in the caller's fixture.
     if demand_periods is not None:
         demand = network.add({
             "element_type": "demand_charge", "name": "peak",
@@ -112,3 +110,21 @@ def test_energy_only_regression():
     assert demand is None
     network.optimize()
     assert network.elements["site_import"] is not None
+
+
+def test_constant_100_kw_peak_and_cost():
+    network, demand = make_network(demand_periods=[period([0, 1, 2, 3], rate=2.0, days=10)])
+    network.optimize()
+    assert demand is not None
+    assert demand.peak_values == pytest.approx((100.0,))
+    assert demand.incremental_cost_aud == pytest.approx(2000.0)
+
+
+def test_constant_demand_kva_conversion():
+    network, demand = make_network(
+        demand_periods=[period([0, 1, 2, 3], rate=1.0, days=1)],
+        unit="kVA", power_factor=0.8,
+    )
+    network.optimize()
+    assert demand is not None
+    assert demand.peak_values == pytest.approx((125.0,))
