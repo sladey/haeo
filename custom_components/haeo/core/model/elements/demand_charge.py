@@ -13,7 +13,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from custom_components.haeo.core.model.element import Element
-from custom_components.haeo.core.model.linear import LinearArray, Rows, total
+from custom_components.haeo.core.model.linear import LinearArray, Rows
 from custom_components.haeo.core.model.reactive import constraint, cost
 from custom_components.haeo.core.model.solver import Solver
 
@@ -24,10 +24,17 @@ ELEMENT_TYPE: Final[DemandChargeElementTypeName] = "demand_charge"
 DEMAND_CHARGE_OUTPUT_NAMES: Final[frozenset[str]] = frozenset()
 
 
-class DemandPeriodConfig(TypedDict):
-    """One independently billed peak; intervals are zero-based simulation indices."""
+class DemandMeasurementConfig(TypedDict):
+    """Weighted average of simulation-step kW for one complete billing measurement."""
 
     intervals: list[int]
+    weights: list[float]
+
+
+class DemandPeriodConfig(TypedDict):
+    """One independently billed peak with weighted demand measurements."""
+
+    measurements: list[DemandMeasurementConfig]
     rate_aud_per_unit_day: float
     billing_days: float
     existing_peak: float
@@ -79,13 +86,19 @@ class DemandCharge(Element[str]):
         self.power_factor = power_factor
         self.billing_periods = tuple(billing_periods)
         for period in self.billing_periods:
-            indices = period["intervals"]
-            if (not indices or len(set(indices)) != len(indices)
-                    or any(not isinstance(i, int) or i < 0 or i >= self.n_periods for i in indices)):
-                raise ValueError("Demand window must contain valid, unique interval indices")
             if any(not math.isfinite(float(period[key])) or float(period[key]) < 0
                    for key in ("rate_aud_per_unit_day", "billing_days", "existing_peak")):
                 raise ValueError("Demand rate, billing days and existing peak must be finite and nonnegative")
+            for measurement in period["measurements"]:
+                indices, weights = measurement["intervals"], measurement["weights"]
+                if (not indices or len(indices) != len(weights)
+                        or len(set(indices)) != len(indices)
+                        or any(not isinstance(i, int) or isinstance(i, bool)
+                               or i < 0 or i >= self.n_periods for i in indices)):
+                    raise ValueError("Invalid demand measurement interval indices")
+                if (any(not math.isfinite(float(w)) or float(w) <= 0 for w in weights)
+                        or not math.isclose(sum(weights), 1.0, abs_tol=1e-9)):
+                    raise ValueError("Demand measurement weights must be positive and sum to one")
         self._peak = solver.add_variables(
             len(self.billing_periods),
             name=f"{name}.billing_peak",
@@ -97,10 +110,14 @@ class DemandCharge(Element[str]):
         """Every metered interval must be below its billing-period peak."""
         measured = self.connection.total_measured_power
         factor = 1.0 / self.power_factor if self.unit == "kVA" else 1.0
-        return Rows.concat([
-            measured[np.asarray(period["intervals"], dtype=np.int64)] * factor <= self._peak[i]
-            for i, period in enumerate(self.billing_periods)
-        ])
+        rows = []
+        for i, period in enumerate(self.billing_periods):
+            for measurement in period["measurements"]:
+                indices = np.asarray(measurement["intervals"], dtype=np.int64)
+                weights = np.asarray(measurement["weights"], dtype=float)
+                averaged = (measured[indices] * weights).total()
+                rows.append(averaged * factor <= self._peak[i])
+        return Rows.concat(rows)
 
     @cost
     def demand_cost(self) -> LinearArray:
@@ -124,4 +141,4 @@ class DemandCharge(Element[str]):
         )
 
 
-__all__ = ["DemandCharge", "DemandChargeElementConfig", "DemandPeriodConfig", "demand_charge_arguments"]
+__all__ = ["DemandCharge", "DemandChargeElementConfig", "DemandPeriodConfig", "DemandMeasurementConfig", "demand_charge_arguments"]
