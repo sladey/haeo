@@ -35,6 +35,7 @@ from .demand_charge import DEMAND_CHARGE_OUTPUT_NAMES as DEMAND_CHARGE_OUTPUT_NA
 from .demand_charge import ELEMENT_TYPE as MODEL_ELEMENT_TYPE_DEMAND_CHARGE
 from .demand_charge import DemandCharge as DemandCharge
 from .demand_charge import DemandChargeElementConfig as DemandChargeElementConfig
+from .demand_charge import DemandChargeElementTypeName as DemandChargeElementTypeName
 from .demand_charge import demand_charge_arguments
 from .deferrable_load import DEFERRABLE_LOAD_OUTPUT_NAMES as DEFERRABLE_LOAD_OUTPUT_NAMES
 from .deferrable_load import ELEMENT_TYPE as MODEL_ELEMENT_TYPE_DEFERRABLE_LOAD
@@ -70,7 +71,7 @@ ModelElementType = (
     | NodeElementTypeName
     | ConnectionElementTypeName
     | PolicyPricingElementTypeName
-    | Literal['demand_charge']
+    | DemandChargeElementTypeName
     | BufferElementTypeName
     | DeferrableLoadElementTypeName
 )
