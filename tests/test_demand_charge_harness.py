@@ -46,7 +46,7 @@ def make_network(*, grid_price=0.0, backup_price=None, demand_periods=None, unit
 
 
 def period(indices, *, rate=1.0, days=1.0, existing=0.0):
-    return {"intervals": indices, "rate_aud_per_unit_day": rate,
+    return {"measurements": [{"intervals": [i], "weights": [1.0]} for i in indices], "rate_aud_per_unit_day": rate,
             "billing_days": days, "existing_peak": existing}
 
 
@@ -99,9 +99,9 @@ def test_independent_billing_periods_and_kva_conversion():
     assert demand.incremental_cost_aud == pytest.approx(1000.0)
 
 
-@pytest.mark.parametrize("indices", [[], [-1], [4], [0, 0]])
+@pytest.mark.parametrize("indices", [[-1], [4]])
 def test_rejects_invalid_window(indices):
-    with pytest.raises(ValueError, match="window"):
+    with pytest.raises(ValueError, match="interval"):
         make_network(backup_price=10.0, demand_periods=[period(indices)])
 
 
@@ -128,3 +128,32 @@ def test_constant_demand_kva_conversion():
     network.optimize()
     assert demand is not None
     assert demand.peak_values == pytest.approx((125.0,))
+
+
+def test_weighted_average_not_instantaneous_peak():
+    network, demand = make_network(
+        demand_periods=[{"measurements": [
+            {"intervals": [0, 1], "weights": [0.5, 0.5]},
+            {"intervals": [2, 3], "weights": [0.5, 0.5]},
+        ], "rate_aud_per_unit_day": 1.0, "billing_days": 1.0, "existing_peak": 0.0}]
+    )
+    network.optimize()
+    assert demand is not None
+    assert demand.peak_values == pytest.approx((100.0,))
+
+
+def test_partial_billing_period_with_no_complete_measurements():
+    network, demand = make_network(
+        demand_periods=[{"measurements": [], "rate_aud_per_unit_day": 1.0,
+                         "billing_days": 30.0, "existing_peak": 70.0}]
+    )
+    network.optimize()
+    assert demand is not None
+    assert demand.peak_values == pytest.approx((70.0,))
+
+
+@pytest.mark.parametrize("weights", [[0.25, 0.25], [-0.5, 1.5], [float("nan"), 1.0]])
+def test_invalid_measurement_weights(weights):
+    with pytest.raises(ValueError, match="weights"):
+        make_network(demand_periods=[{"measurements": [{"intervals": [0, 1], "weights": weights}],
+            "rate_aud_per_unit_day": 1.0, "billing_days": 1.0, "existing_peak": 0.0}])
