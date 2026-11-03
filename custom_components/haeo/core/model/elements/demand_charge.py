@@ -51,9 +51,15 @@ class DemandChargeElementConfig(TypedDict):
 
 def demand_charge_arguments(config: DemandChargeElementConfig, elements: Mapping[str, object]) -> dict[str, object]:
     """Resolve the measured import connection before constructing the element."""
-    connection = elements.get(config["connection"])
+    connection_name = config["connection"]
+    if connection_name not in elements:
+        raise ValueError(f"Unknown demand-charge connection: {connection_name}")
+
+    connection = elements[connection_name]
     if not isinstance(connection, Connection):
-        raise ValueError(f"Demand charge references unknown connection: {config['connection']}")
+        raise TypeError(
+            f"Demand-charge connection '{connection_name}' must reference a Connection element"
+        )
     return {
         "connection": connection,
         "unit": config["unit"],
