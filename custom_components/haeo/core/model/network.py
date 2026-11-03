@@ -20,7 +20,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .element import Element, NetworkElement
-from .elements import ELEMENTS, ModelElementConfig
+from .elements import ELEMENTS, ModelElementConfig, DemandCharge, DemandChargeElementConfig
 from .elements.battery import Battery, BatteryElementConfig
 from .elements.buffer import Buffer, BufferElementConfig
 from .elements.connection import Connection, ConnectionElementConfig, ConnectionOutputName
@@ -249,6 +249,9 @@ class Network:
 
     @overload
     def add(self, element_config: PolicyPricingElementConfig) -> PolicyPricing: ...
+
+    @overload
+    def add(self, element_config: DemandChargeElementConfig) -> DemandCharge: ...
 
     @overload
     def add(self, element_config: BufferElementConfig) -> Buffer: ...

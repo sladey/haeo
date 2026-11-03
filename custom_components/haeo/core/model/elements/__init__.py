@@ -31,6 +31,12 @@ from .connection import Connection as Connection
 from .connection import ConnectionElementConfig as ConnectionElementConfig
 from .connection import ConnectionElementTypeName as ConnectionElementTypeName
 from .connection import ConnectionOutputName as ConnectionOutputName
+from .demand_charge import DEMAND_CHARGE_OUTPUT_NAMES as DEMAND_CHARGE_OUTPUT_NAMES
+from .demand_charge import ELEMENT_TYPE as MODEL_ELEMENT_TYPE_DEMAND_CHARGE
+from .demand_charge import DemandCharge as DemandCharge
+from .demand_charge import DemandChargeElementConfig as DemandChargeElementConfig
+from .demand_charge import DemandChargeElementTypeName as DemandChargeElementTypeName
+from .demand_charge import demand_charge_arguments
 from .deferrable_load import DEFERRABLE_LOAD_OUTPUT_NAMES as DEFERRABLE_LOAD_OUTPUT_NAMES
 from .deferrable_load import ELEMENT_TYPE as MODEL_ELEMENT_TYPE_DEFERRABLE_LOAD
 from .deferrable_load import DeferrableLoad as DeferrableLoad
@@ -65,6 +71,7 @@ ModelElementType = (
     | NodeElementTypeName
     | ConnectionElementTypeName
     | PolicyPricingElementTypeName
+    | DemandChargeElementTypeName
     | BufferElementTypeName
     | DeferrableLoadElementTypeName
 )
@@ -75,6 +82,7 @@ ModelElementConfig = (
     | NodeElementConfig
     | ConnectionElementConfig
     | PolicyPricingElementConfig
+    | DemandChargeElementConfig
     | BufferElementConfig
     | DeferrableLoadElementConfig
 )
@@ -151,6 +159,9 @@ ELEMENTS: Final[dict[ModelElementType, ElementSpec[Never]]] = {
     MODEL_ELEMENT_TYPE_BUFFER: ElementSpec[BufferElementConfig](
         factory=Buffer, output_names=BUFFER_OUTPUT_NAMES, arguments=buffer_arguments
     ),
+    MODEL_ELEMENT_TYPE_DEMAND_CHARGE: ElementSpec[DemandChargeElementConfig](
+        factory=DemandCharge, output_names=DEMAND_CHARGE_OUTPUT_NAMES, arguments=demand_charge_arguments
+    ),
     MODEL_ELEMENT_TYPE_POLICY_PRICING: ElementSpec[PolicyPricingElementConfig](
         factory=PolicyPricing, output_names=POLICY_PRICING_OUTPUT_NAMES, arguments=policy_pricing_arguments
     ),
@@ -173,6 +184,10 @@ __all__ = [
     "BUFFER_OUTPUT_NAMES",
     "CONNECTION_OUTPUT_NAMES",
     "CONNECTION_POWER",
+    "DEMAND_CHARGE_OUTPUT_NAMES",
+    "MODEL_ELEMENT_TYPE_DEMAND_CHARGE",
+    "DemandCharge",
+    "DemandChargeElementConfig",
     "DEFERRABLE_LOAD_OUTPUT_NAMES",
     "ELEMENTS",
     "MODEL_ELEMENT_TYPE_BATTERY",
@@ -215,6 +230,7 @@ __all__ = [
     "SegmentSpec",
     "SegmentType",
     "SourceElementConfig",
+    "demand_charge_arguments",
     "config_arguments",
     "is_network_element_config",
     "is_source_element_config",
