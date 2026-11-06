@@ -133,18 +133,22 @@ class Battery(NetworkElement[BatteryOutputName]):
         checkpoints: list[tuple[int, float]] = []
         for boundary, required in (hard_min_charge or {}).items():
             if isinstance(boundary, bool) or not isinstance(boundary, (int, np.integer)):
-                raise ValueError(f"Battery hard_min_charge boundary must be an integer: {boundary!r}")
+                msg = f"Battery hard_min_charge boundary must be an integer: {boundary!r}"
+                raise TypeError(msg)
             if not 0 <= boundary <= n_periods:
-                raise ValueError(f"Battery hard_min_charge boundary {boundary} outside 0..{n_periods}")
+                msg = f"Battery hard_min_charge boundary {boundary} outside 0..{n_periods}"
+                raise ValueError(msg)
             try:
                 energy = float(required)
             except (TypeError, ValueError, OverflowError) as exc:
-                raise ValueError(f"Battery hard_min_charge[{boundary}] must be a finite number") from exc
+                msg = f"Battery hard_min_charge[{boundary}] must be a finite number"
+                raise ValueError(msg) from exc
             if not np.isfinite(energy) or energy < 0 or energy > self.capacity[boundary]:
-                raise ValueError(
+                msg = (
                     f"Battery hard_min_charge[{boundary}] must be between 0 and capacity "
                     f"({self.capacity[boundary]} kWh)"
                 )
+                raise ValueError(msg)
             checkpoints.append((int(boundary), energy))
         self._hard_min_charge = tuple(sorted(checkpoints))
 
