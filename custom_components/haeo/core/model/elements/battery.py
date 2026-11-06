@@ -1,5 +1,6 @@
 """Battery entity for electrical system modeling."""
 
+from collections.abc import Mapping
 from typing import Final, Literal, NotRequired, TypedDict
 
 import numpy as np
@@ -65,6 +66,7 @@ class BatteryElementConfig(TypedDict):
     capacity: NDArray[np.float64] | float
     initial_charge: float
     min_charge: NotRequired[NDArray[np.float64] | float]
+    hard_min_charge: NotRequired[Mapping[int, float]]
     max_charge: NotRequired[NDArray[np.float64] | float]
     charge_limit_cost: NotRequired[NDArray[np.float64] | float]
     salvage_value: NotRequired[float]
@@ -78,7 +80,9 @@ class Battery(NetworkElement[BatteryOutputName]):
     Represents a single battery section with cumulative energy tracking.
     Stored energy runs from empty to its capacity. The min and max charge are kept
     with priced slack instead, so the plan stays feasible when the battery starts
-    outside them. Uses TrackedParam for parameters that can change between optimizations.
+    outside them. Optional hard minimum-charge checkpoints have no slack and are
+    fixed when the element is created. Uses TrackedParam for the other parameters
+    that can change between optimizations.
     """
 
     # Parameters
@@ -98,6 +102,7 @@ class Battery(NetworkElement[BatteryOutputName]):
         capacity: NDArray[np.float64] | float,
         initial_charge: float,
         min_charge: NDArray[np.float64] | float | None = None,
+        hard_min_charge: Mapping[int, float] | None = None,
         max_charge: NDArray[np.float64] | float | None = None,
         charge_limit_cost: NDArray[np.float64] | float = 0.0,
         salvage_value: float = 0.0,
@@ -122,6 +127,26 @@ class Battery(NetworkElement[BatteryOutputName]):
         self.max_charge = broadcast_to_sequence(max_charge, n_periods + 1)
         self.charge_limit_cost = broadcast_to_sequence(charge_limit_cost, n_periods)
         self.salvage_value = salvage_value
+
+        # Sparse, immutable checkpoints at battery energy boundaries (0..n_periods).
+        # Keep these fixed because reactive constraint updates require a stable row count.
+        checkpoints: list[tuple[int, float]] = []
+        for boundary, required in (hard_min_charge or {}).items():
+            if isinstance(boundary, bool) or not isinstance(boundary, (int, np.integer)):
+                raise ValueError(f"Battery hard_min_charge boundary must be an integer: {boundary!r}")
+            if not 0 <= boundary <= n_periods:
+                raise ValueError(f"Battery hard_min_charge boundary {boundary} outside 0..{n_periods}")
+            try:
+                energy = float(required)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"Battery hard_min_charge[{boundary}] must be a finite number") from exc
+            if not np.isfinite(energy) or energy < 0 or energy > self.capacity[boundary]:
+                raise ValueError(
+                    f"Battery hard_min_charge[{boundary}] must be between 0 and capacity "
+                    f"({self.capacity[boundary]} kWh)"
+                )
+            checkpoints.append((int(boundary), energy))
+        self._hard_min_charge = tuple(sorted(checkpoints))
 
         # Create all energy variables (including initial state at t=0)
         self.energy_in = solver.add_variables(n_periods + 1, name=f"{name}.energy_in")
@@ -219,6 +244,20 @@ class Battery(NetworkElement[BatteryOutputName]):
         Output: shadow price indicating the marginal cost of the min charge.
         """
         return self.stored_energy[1:] + self._below_min >= self.charge_floor[1:]
+
+    @constraint
+    def battery_hard_min_charge(self) -> Rows:
+        """Enforce exact minimum stored energy at selected period boundaries, without slack.
+
+        Checkpoint index b refers to stored_energy[b], i.e. the state after
+        period b-1 and before period b. IIS row labels currently omit the
+        boundary for sparse constraints; the caller retains checkpoint metadata.
+        """
+        if not self._hard_min_charge:
+            return Rows.concat([])
+        boundaries = np.array([boundary for boundary, _ in self._hard_min_charge], dtype=np.intp)
+        required = np.array([energy for _, energy in self._hard_min_charge], dtype=np.float64)
+        return self.stored_energy[boundaries] >= required
 
     def element_power_produced(self) -> LinearArray:
         """Return power produced by discharging the battery."""
