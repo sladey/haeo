@@ -94,5 +94,8 @@ def test_checkpoint_is_hard_even_when_soft_minimum_has_slack() -> None:
     ],
 )
 def test_invalid_checkpoints_fail_at_construction(checkpoints: dict) -> None:
-    with pytest.raises(ValueError, match="hard_min_charge"):
+    """Reject invalid indices and energies before constructing solver constraints."""
+    invalid_key_type = any(isinstance(key, bool) or not isinstance(key, (int, np.integer)) for key in checkpoints)
+    error_type = TypeError if invalid_key_type else ValueError
+    with pytest.raises(error_type, match="hard_min_charge"):
         _battery(checkpoints=checkpoints)
